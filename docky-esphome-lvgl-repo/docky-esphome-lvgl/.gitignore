@@ -1,0 +1,23 @@
+# ESPHome generated/build output
+.esphome/
+*.bin
+*.elf
+*.map
+*.uf2
+*.factory.bin
+
+# Secrets and local-only config
+secrets.yaml
+*.local.yaml
+
+# Logs/cache/editor noise
+logs/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Python cache, if you use helper scripts later
+__pycache__/
+*.pyc

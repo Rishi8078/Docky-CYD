@@ -1,0 +1,1837 @@
+esphome:
+  name: esphome-web-c042c4
+  friendly_name: Docky
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+
+api:
+  encryption:
+    key: !secret smartdisplay_api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+spi:
+  - id: lcd
+    clk_pin: GPIO14
+    mosi_pin: GPIO13
+
+  - id: touch_bus
+    clk_pin: GPIO25
+    mosi_pin: GPIO32
+    miso_pin: GPIO39
+
+output:
+  - platform: ledc
+    pin: GPIO21
+    id: gpio_backlight_pwm
+
+  - platform: ledc
+    id: rgb_led_red
+    pin: GPIO4
+    inverted: true
+
+  - platform: ledc
+    id: rgb_led_green
+    pin: GPIO16
+    inverted: true
+
+  - platform: ledc
+    id: rgb_led_blue
+    pin: GPIO17
+    inverted: true
+
+light:
+  - platform: monochromatic
+    output: gpio_backlight_pwm
+    name: "Docky Backlight"
+    id: back_light
+    restore_mode: ALWAYS_ON
+
+  - platform: rgb
+    name: "Docky RGB LED"
+    id: docky_rgb_led
+    red: rgb_led_red
+    green: rgb_led_green
+    blue: rgb_led_blue
+    restore_mode: ALWAYS_OFF
+
+display:
+  - platform: mipi_spi
+    id: my_display
+    spi_id: lcd
+    model: ESP32-2432S028-7789
+    cs_pin:
+      number: GPIO15
+      ignore_strapping_warning: true
+    dc_pin:
+      number: GPIO2
+      ignore_strapping_warning: true
+    reset_pin:
+      number: GPIO12
+      ignore_strapping_warning: true
+    color_order: bgr
+    invert_colors: false
+    update_interval: never
+    auto_clear_enabled: false
+
+touchscreen:
+  - platform: xpt2046
+    id: ts_touch
+    display: my_display
+    spi_id: touch_bus
+    cs_pin: GPIO33
+    interrupt_pin: GPIO36
+    update_interval: 50ms
+    threshold: 400
+    calibration:
+      x_min: 280
+      x_max: 3860
+      y_min: 340
+      y_max: 3860
+    transform:
+      swap_xy: false
+      mirror_x: true
+      mirror_y: false
+
+binary_sensor:
+  - platform: gpio
+    id: btn_lights_page
+    name: "Lights Page Button"
+    pin:
+      number: GPIO22
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+      - delayed_off: 20ms
+    on_multi_click:
+      - timing:
+          - ON for at most 700ms
+          - OFF for at least 50ms
+        then:
+          - if:
+              condition:
+                lambda: return id(showing_lights_page) || id(showing_transport_page) || id(showing_washing_page);
+              then:
+                - lambda: |-
+                    id(showing_lights_page) = false;
+                    id(showing_transport_page) = false;
+                    id(showing_washing_page) = false;
+                - script.execute: update_display
+                - lvgl.page.show: main_page
+              else:
+                - lambda: |-
+                    id(showing_lights_page) = true;
+                    id(showing_transport_page) = false;
+                    id(showing_washing_page) = false;
+                - script.execute: update_display
+                - lvgl.page.show: lights_page
+
+      - timing:
+          - ON for at least 700ms
+        then:
+          - if:
+              condition:
+                lambda: return id(showing_lights_page) || id(showing_transport_page) || id(showing_washing_page);
+              then:
+                - lambda: |-
+                    id(showing_transport_page) = false;
+                    id(showing_lights_page) = false;
+                    id(showing_washing_page) = false;
+                - script.execute: update_display
+                - lvgl.page.show: main_page
+              else:
+                - lambda: |-
+                    id(showing_transport_page) = true;
+                    id(showing_lights_page) = false;
+                    id(showing_washing_page) = false;
+                - script.execute: update_display
+                - lvgl.page.show: transport_page
+
+  - platform: gpio
+    id: gpio27_input
+    name: "Washing Page Button"
+    pin:
+      number: GPIO27
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    filters:
+      - delayed_on: 20ms
+      - delayed_off: 20ms
+    on_press:
+      then:
+        - if:
+            condition:
+              lambda: return id(showing_lights_page) || id(showing_transport_page) || id(showing_washing_page);
+            then:
+              - lambda: |-
+                  id(showing_lights_page) = false;
+                  id(showing_transport_page) = false;
+                  id(showing_washing_page) = false;
+              - script.execute: update_display
+              - lvgl.page.show: main_page
+            else:
+              - lambda: |-
+                  id(showing_lights_page) = false;
+                  id(showing_transport_page) = false;
+                  id(showing_washing_page) = true;
+              - script.execute: update_display
+              - lvgl.page.show: washing_page
+
+button:
+  - platform: template
+    name: "Docky Home"
+    on_press:
+      then:
+        - lambda: |-
+            id(showing_lights_page) = false;
+            id(showing_transport_page) = false;
+            id(showing_washing_page) = false;
+        - script.execute: update_display
+        - lvgl.page.show: main_page
+
+  - platform: template
+    name: "Docky Scenes"
+    on_press:
+      then:
+        - lambda: |-
+            id(showing_lights_page) = true;
+            id(showing_transport_page) = false;
+            id(showing_washing_page) = false;
+        - script.execute: update_display
+        - lvgl.page.show: lights_page
+
+  - platform: template
+    name: "Docky Transport"
+    on_press:
+      then:
+        - lambda: |-
+            id(showing_lights_page) = false;
+            id(showing_transport_page) = true;
+            id(showing_washing_page) = false;
+        - script.execute: update_display
+        - lvgl.page.show: transport_page
+
+  - platform: template
+    name: "Docky Washing"
+    on_press:
+      then:
+        - lambda: |-
+            id(showing_lights_page) = false;
+            id(showing_transport_page) = false;
+            id(showing_washing_page) = true;
+        - script.execute: update_display
+        - lvgl.page.show: washing_page
+
+  - platform: template
+    name: "Docky Rotate Display"
+    on_press:
+      then:
+        - lambda: |-
+            id(display_rotation) = (id(display_rotation) + 90) % 360;
+        - if:
+            condition:
+              lambda: return id(display_rotation) == 0;
+            then:
+              - lvgl.display.set_rotation: 0
+        - if:
+            condition:
+              lambda: return id(display_rotation) == 90;
+            then:
+              - lvgl.display.set_rotation: 90
+        - if:
+            condition:
+              lambda: return id(display_rotation) == 180;
+            then:
+              - lvgl.display.set_rotation: 180
+        - if:
+            condition:
+              lambda: return id(display_rotation) == 270;
+            then:
+              - lvgl.display.set_rotation: 270
+
+font:
+  - file: "gfonts://Elms+Sans@700"
+    id: font_time
+    size: 90
+    bpp: 4
+    glyphs: "0123456789: "
+
+  - file: "gfonts://Elms+Sans@600"
+    id: font_label
+    size: 18
+    bpp: 4
+    glyphs: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz :&@!,.?\"'%()+-_/°"
+
+  - file: "gfonts://Elms+Sans@700"
+    id: font_transport_eta
+    size: 54
+    bpp: 4
+    glyphs: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz :&@!,.?\"'%()+-_/°"
+
+  - file: "gfonts://Elms+Sans@400"
+    id: font_sub
+    size: 18
+    bpp: 4
+    glyphs: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz :&@!,.?\"'%()+-_/°"
+
+  # Weather condition fonts.
+  # The script dynamically chooses between these so the condition text fits.
+  - file: "gfonts://Elms+Sans@400"
+    id: font_condition_18
+    size: 18
+    bpp: 4
+    glyphs: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz :&@!,.?\"'%()+-_/°"
+
+  - file: "gfonts://Elms+Sans@400"
+    id: font_condition_16
+    size: 16
+    bpp: 4
+    glyphs: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz :&@!,.?\"'%()+-_/°"
+
+  - file: "gfonts://Elms+Sans@400"
+    id: font_condition_14
+    size: 14
+    bpp: 4
+    glyphs: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz :&@!,.?\"'%()+-_/°"
+
+  - file: "gfonts://Elms+Sans@400"
+    id: font_condition_12
+    size: 12
+    bpp: 4
+    glyphs: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz :&@!,.?\"'%()+-_/°"
+
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: font_weather_icon
+    size: 26
+    bpp: 4
+    glyphsets: []
+    glyphs:
+      - "\U000F0590" # mdi-weather-cloudy
+      - "\U000F0591" # mdi-weather-fog
+      - "\U000F0592" # mdi-weather-hail
+      - "\U000F0593" # mdi-weather-lightning
+      - "\U000F0594" # mdi-weather-night
+      - "\U000F0595" # mdi-weather-partly-cloudy
+      - "\U000F0596" # mdi-weather-pouring
+      - "\U000F0597" # mdi-weather-rainy
+      - "\U000F0598" # mdi-weather-snowy
+      - "\U000F0599" # mdi-weather-sunny
+      - "\U000F059D" # mdi-weather-windy
+      - "\U000F059E" # mdi-weather-windy-variant
+      - "\U000F067E" # mdi-weather-lightning-rainy
+      - "\U000F067F" # mdi-weather-snowy-rainy
+      - "\U000F0F31" # mdi-weather-night-partly-cloudy
+      - "\U000F002A" # mdi-alert-outline
+
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: font_scene_icon
+    size: 32
+    bpp: 4
+    glyphsets: []
+    glyphs:
+      - "\U000F1844" # mdi-magic-staff
+      - "\U000F0D72" # mdi-flare
+      - "\U000F0674" # mdi-creation
+      - "\U000F04B9" # mdi-sofa
+      - "\U000F0E2E" # mdi-fireplace
+      - "\U000F0717" # mdi-snowflake
+      - "\U000F07B4" # mdi-chili-mild
+      - "\U000F0425" # mdi-power
+
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: font_washing_icon
+    size: 30
+    bpp: 4
+    glyphsets: []
+    glyphs:
+      - "\U000F072A" # mdi-washing-machine
+      - "\U000F11BC" # mdi-washing-machine-alert
+
+globals:
+  - id: is_night
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: showing_lights_page
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: showing_transport_page
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: showing_washing_page
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: display_rotation
+    type: int
+    restore_value: no
+    initial_value: '90'
+
+time:
+  - platform: homeassistant
+    id: ha_time
+    on_time:
+      - seconds: 0
+        minutes: /1
+        then:
+          - script.execute: update_display
+
+image:
+  - file: "images/background.png"
+    id: bg_image
+    type: RGB565
+    resize: 320x240
+
+  - file: "images/background_night.png"
+    id: bg_image_night
+    type: RGB565
+    resize: 320x240
+
+text_sensor:
+  - platform: homeassistant
+    id: sun_state
+    entity_id: sun.sun
+    on_value:
+      then:
+        - script.execute: update_display
+
+  - platform: homeassistant
+    id: weather_summary
+    entity_id: sensor.pirateweather_minutely_summary
+    on_value:
+      then:
+        - script.execute: update_display
+
+  - platform: homeassistant
+    id: weather_condition
+    entity_id: weather.pirateweather
+    on_value:
+      then:
+        - script.execute: update_display
+
+  - platform: homeassistant
+    id: transport_s1_direction
+    entity_id: sensor.next_s1_from_berliner_tor
+    attribute: direction
+    on_value:
+      then:
+        - script.execute: update_display
+
+  - platform: homeassistant
+    id: washing_machine_46083
+    entity_id: sensor.washing_machine_46083
+    on_value:
+      then:
+        - script.execute: update_display
+
+  - platform: homeassistant
+    id: washing_machine_46084
+    entity_id: sensor.washing_machine_46084
+    on_value:
+      then:
+        - script.execute: update_display
+
+  - platform: homeassistant
+    id: washing_machine_46085
+    entity_id: sensor.washing_machine_46085
+    on_value:
+      then:
+        - script.execute: update_display
+
+  - platform: homeassistant
+    id: washing_machine_46086
+    entity_id: sensor.washing_machine_46086
+    on_value:
+      then:
+        - script.execute: update_display
+
+  - platform: homeassistant
+    id: washing_machine_46087
+    entity_id: sensor.washing_machine_46087
+    on_value:
+      then:
+        - script.execute: update_display
+
+  - platform: homeassistant
+    id: washing_machine_46088
+    entity_id: sensor.washing_machine_46088
+    on_value:
+      then:
+        - script.execute: update_display
+
+  - platform: homeassistant
+    id: washing_machine_46118
+    entity_id: sensor.washing_machine_46118
+    on_value:
+      then:
+        - script.execute: update_display
+
+  - platform: homeassistant
+    id: washing_machine_46117
+    entity_id: sensor.washing_machine_46117
+    on_value:
+      then:
+        - script.execute: update_display
+
+sensor:
+  - platform: adc
+    pin: GPIO34
+    id: ambient_light
+    name: "Docky Ambient Light"
+    attenuation: 12db
+    update_interval: 5s
+
+  - platform: homeassistant
+    id: transport_s1_minutes
+    entity_id: sensor.next_s1_from_berliner_tor
+    attribute: minutes_until
+    on_value:
+      then:
+        - script.execute: update_display
+
+  - platform: homeassistant
+    id: transport_s1_delay
+    entity_id: sensor.next_s1_from_berliner_tor
+    attribute: delay
+    on_value:
+      then:
+        - script.execute: update_display
+
+  - platform: homeassistant
+    id: indoor_temp
+    entity_id: sensor.40_b7_fc_18_ba_42_ba42_temperature
+    on_value:
+      then:
+        - script.execute: update_display
+
+  - platform: homeassistant
+    id: indoor_humidity
+    entity_id: sensor.40_b7_fc_18_ba_42_ba42_humidity
+    on_value:
+      then:
+        - script.execute: update_display
+
+  - platform: homeassistant
+    id: outdoor_temp
+    entity_id: weather.pirateweather
+    attribute: temperature
+    on_value:
+      then:
+        - script.execute: update_display
+
+script:
+  - id: update_display
+    mode: restart
+    then:
+      - lambda: |-
+          auto now = id(ha_time).now();
+          if (!now.is_valid()) return;
+
+          std::string sun = id(sun_state).state;
+
+          if (sun == "below_horizon") {
+            id(is_night) = true;
+          } else if (sun == "above_horizon") {
+            id(is_night) = false;
+          } else {
+            id(is_night) = (now.hour < 7 || now.hour >= 21);
+          }
+
+      - if:
+          condition:
+            lambda: return id(is_night);
+          then:
+            - lvgl.image.update:
+                id: bg_img
+                src: bg_image_night
+            - lvgl.image.update:
+                id: lights_bg_img
+                src: bg_image_night
+            - lvgl.image.update:
+                id: transport_bg_img
+                src: bg_image_night
+            - lvgl.image.update:
+                id: washing_bg_img
+                src: bg_image_night
+          else:
+            - lvgl.image.update:
+                id: bg_img
+                src: bg_image
+            - lvgl.image.update:
+                id: lights_bg_img
+                src: bg_image
+            - lvgl.image.update:
+                id: transport_bg_img
+                src: bg_image
+            - lvgl.image.update:
+                id: washing_bg_img
+                src: bg_image
+
+      - lambda: |-
+          auto now = id(ha_time).now();
+          if (!now.is_valid()) return;
+
+          bool night = id(is_night);
+
+          // Header bar
+          lv_obj_set_width(id(header_panel), 320);
+          lv_obj_set_height(id(header_panel), 44);
+          lv_obj_align(id(header_panel), LV_ALIGN_TOP_LEFT, 0, 0);
+          lv_obj_set_style_bg_opa(id(header_panel), LV_OPA_TRANSP, 0);
+
+          lv_obj_set_width(id(lbl_greeting), 200);
+          lv_obj_set_height(id(lbl_greeting), 24);
+          lv_obj_set_height(id(lbl_indoor_header), 24);
+          lv_label_set_long_mode(id(lbl_indoor_header), LV_LABEL_LONG_CLIP);
+
+          // Clock — shifted down to clear the header
+          lv_obj_set_width(id(lbl_time), 320);
+          lv_obj_set_height(id(lbl_time), 95);
+          lv_label_set_long_mode(id(lbl_time), LV_LABEL_LONG_CLIP);
+          lv_obj_align(id(lbl_time), LV_ALIGN_TOP_MID, 0, 46);
+
+          // Weather condition
+          lv_obj_set_width(id(lbl_condition), 300);
+          lv_obj_set_height(id(lbl_condition), 34);
+          lv_label_set_long_mode(id(lbl_condition), LV_LABEL_LONG_DOT);
+          lv_obj_align(id(lbl_condition), LV_ALIGN_TOP_MID, 0, 157);
+
+          // Footer bar
+          lv_obj_set_width(id(footer_panel), 320);
+          lv_obj_set_height(id(footer_panel), 51);
+          lv_obj_set_pos(id(footer_panel), 0, 189);
+          lv_obj_set_style_bg_opa(id(footer_panel), LV_OPA_TRANSP, 0);
+
+          // Day — left side of footer (relative to footer_panel)
+          lv_obj_set_width(id(lbl_day), 140);
+          lv_obj_set_height(id(lbl_day), 22);
+          lv_label_set_long_mode(id(lbl_day), LV_LABEL_LONG_DOT);
+
+          // Weather icon — right side of footer (relative to footer_panel)
+          lv_obj_set_width(id(lbl_weather_icon), 30);
+          lv_obj_set_height(id(lbl_weather_icon), 30);
+          lv_label_set_long_mode(id(lbl_weather_icon), LV_LABEL_LONG_CLIP);
+          lv_obj_set_style_text_align(id(lbl_weather_icon), LV_TEXT_ALIGN_RIGHT, 0);
+          lv_obj_set_style_translate_y(id(lbl_weather_icon), 4, 0);
+
+          // Temperature — rightmost in footer (relative to footer_panel)
+          lv_obj_set_height(id(lbl_temp), 22);
+          lv_label_set_long_mode(id(lbl_temp), LV_LABEL_LONG_DOT);
+
+          // Background
+          if (night) {
+            lv_obj_set_style_bg_color(id(bg_panel), lv_color_hex(0x000000), 0);
+            lv_obj_set_style_bg_color(id(lights_panel), lv_color_hex(0x000000), 0);
+            lv_obj_set_style_bg_color(id(transport_panel), lv_color_hex(0x000000), 0);
+            lv_obj_set_style_bg_color(id(washing_panel), lv_color_hex(0x000000), 0);
+          } else {
+            lv_obj_set_style_bg_color(id(bg_panel), lv_color_hex(0xFFFFFF), 0);
+            lv_obj_set_style_bg_color(id(lights_panel), lv_color_hex(0xFFFFFF), 0);
+            lv_obj_set_style_bg_color(id(transport_panel), lv_color_hex(0xFFFFFF), 0);
+            lv_obj_set_style_bg_color(id(washing_panel), lv_color_hex(0xFFFFFF), 0);
+          }
+
+          lv_obj_clear_flag(id(bg_img), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_clear_flag(id(lights_bg_img), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_clear_flag(id(transport_bg_img), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_clear_flag(id(washing_bg_img), LV_OBJ_FLAG_HIDDEN);
+
+          // Text colors
+          uint32_t day_text = 0x230C0F;
+
+          uint32_t main_text = night ? 0xFFFFFF : day_text;
+          uint32_t sub_text = night ? 0xFFFFFF : day_text;
+          uint32_t accent_text = night ? 0xFFFFFF : day_text;
+
+          // Time
+          char time_buf[6];
+          snprintf(time_buf, sizeof(time_buf), "%02d:%02d", now.hour, now.minute);
+          lv_label_set_text(id(lbl_time), time_buf);
+          lv_obj_set_style_text_color(id(lbl_time), lv_color_hex(main_text), 0);
+
+          // Day
+          const char* days[] = {
+            "Sunday", "Monday", "Tuesday", "Wednesday",
+            "Thursday", "Friday", "Saturday"
+          };
+
+          if (now.day_of_week >= 1 && now.day_of_week <= 7) {
+            lv_label_set_text(id(lbl_day), days[now.day_of_week - 1]);
+          }
+
+          lv_obj_set_style_text_color(id(lbl_day), lv_color_hex(sub_text), 0);
+
+          // Greeting
+          lv_label_set_text(id(lbl_greeting), "Hi Rishi");
+          lv_obj_set_style_text_color(id(lbl_greeting), lv_color_hex(sub_text), 0);
+
+          // Indoor climate
+          bool has_indoor_temp = !isnan(id(indoor_temp).state);
+          bool has_indoor_humidity = !isnan(id(indoor_humidity).state);
+
+          if (has_indoor_temp && has_indoor_humidity) {
+            char indoor_buf[16];
+            snprintf(
+              indoor_buf,
+              sizeof(indoor_buf),
+              "%.0f° %.0f%%",
+              id(indoor_temp).state,
+              id(indoor_humidity).state
+            );
+            lv_label_set_text(id(lbl_indoor_header), indoor_buf);
+          } else if (has_indoor_temp) {
+            char indoor_buf[8];
+            snprintf(indoor_buf, sizeof(indoor_buf), "%.0f°", id(indoor_temp).state);
+            lv_label_set_text(id(lbl_indoor_header), indoor_buf);
+          } else if (has_indoor_humidity) {
+            char indoor_buf[8];
+            snprintf(indoor_buf, sizeof(indoor_buf), "%.0f%%", id(indoor_humidity).state);
+            lv_label_set_text(id(lbl_indoor_header), indoor_buf);
+          } else {
+            lv_label_set_text(id(lbl_indoor_header), "");
+          }
+
+          lv_obj_set_style_text_color(id(lbl_indoor_header), lv_color_hex(sub_text), 0);
+
+          // Weather icon from Home Assistant weather state
+          std::string condition = id(weather_condition).state;
+
+          const char *weather_icon = night ? "\U000F0594" : "\U000F0599";
+
+          if (condition == "clear-night") {
+            weather_icon = "\U000F0594";
+          } else if (condition == "cloudy") {
+            weather_icon = "\U000F0590";
+          } else if (condition == "fog") {
+            weather_icon = "\U000F0591";
+          } else if (condition == "hail") {
+            weather_icon = "\U000F0592";
+          } else if (condition == "lightning") {
+            weather_icon = "\U000F0593";
+          } else if (condition == "lightning-rainy") {
+            weather_icon = "\U000F067E";
+          } else if (condition == "partlycloudy") {
+            weather_icon = night ? "\U000F0F31" : "\U000F0595";
+          } else if (condition == "pouring") {
+            weather_icon = "\U000F0596";
+          } else if (condition == "rainy") {
+            weather_icon = "\U000F0597";
+          } else if (condition == "snowy") {
+            weather_icon = "\U000F0598";
+          } else if (condition == "snowy-rainy") {
+            weather_icon = "\U000F067F";
+          } else if (condition == "sunny") {
+            weather_icon = night ? "\U000F0594" : "\U000F0599";
+          } else if (condition == "windy") {
+            weather_icon = "\U000F059D";
+          } else if (condition == "windy-variant") {
+            weather_icon = "\U000F059E";
+          } else if (condition == "exceptional") {
+            weather_icon = "\U000F002A";
+          }
+
+          lv_label_set_text(id(lbl_weather_icon), weather_icon);
+
+          // Weather icon now matches temperature color
+          lv_obj_set_style_text_color(id(lbl_weather_icon), lv_color_hex(sub_text), 0);
+
+          // Weather summary
+          std::string summary = id(weather_summary).state;
+
+          if (
+            summary.empty() ||
+            summary == "unknown" ||
+            summary == "unavailable"
+          ) {
+            summary = "Loading...";
+          }
+
+          // Dynamically select the largest condition font that fits.
+          const int32_t condition_width = 300;
+
+          auto text_width = [&](const esphome::font::Font *font) -> int32_t {
+            lv_point_t measured_size;
+            lv_text_get_size(
+              &measured_size,
+              summary.c_str(),
+              font->get_lv_font(),
+              0,
+              0,
+              LV_COORD_MAX,
+              LV_TEXT_FLAG_NONE
+            );
+            return measured_size.x;
+          };
+
+          const esphome::font::Font *condition_font = id(font_condition_12);
+
+          if (text_width(id(font_condition_18)) <= condition_width) {
+            condition_font = id(font_condition_18);
+          } else if (text_width(id(font_condition_16)) <= condition_width) {
+            condition_font = id(font_condition_16);
+          } else if (text_width(id(font_condition_14)) <= condition_width) {
+            condition_font = id(font_condition_14);
+          } else {
+            condition_font = id(font_condition_12);
+          }
+
+          lv_obj_set_style_text_font(id(lbl_condition), condition_font->get_lv_font(), 0);
+          lv_label_set_text(id(lbl_condition), summary.c_str());
+          lv_obj_set_style_text_color(id(lbl_condition), lv_color_hex(accent_text), 0);
+
+          // Temperature
+          if (!isnan(id(outdoor_temp).state)) {
+            char temp_buf[10];
+            snprintf(temp_buf, sizeof(temp_buf), "%.0f°C", id(outdoor_temp).state);
+            lv_label_set_text(id(lbl_temp), temp_buf);
+          } else {
+            lv_label_set_text(id(lbl_temp), "");
+          }
+
+          lv_obj_set_style_text_color(id(lbl_temp), lv_color_hex(sub_text), 0);
+
+          // Transportation
+          auto update_transport_card = [](
+            lv_obj_t *eta_label,
+            lv_obj_t *status_label,
+            lv_obj_t *direction_label,
+            float minutes,
+            float delay_seconds,
+            const std::string &direction
+          ) {
+            if (isnan(minutes)) {
+              lv_label_set_text(eta_label, "-");
+              lv_label_set_text(status_label, "Unavailable");
+              lv_label_set_text(direction_label, "-");
+              lv_obj_set_style_text_color(status_label, lv_color_hex(0x8A8A8A), 0);
+              return;
+            }
+
+            char eta_buf[12];
+            if (minutes <= 0) {
+              snprintf(eta_buf, sizeof(eta_buf), "Now");
+            } else {
+              snprintf(eta_buf, sizeof(eta_buf), "%.0fmin", minutes);
+            }
+
+            lv_label_set_text(eta_label, eta_buf);
+            lv_label_set_text(direction_label, direction.empty() ? "-" : direction.c_str());
+
+            int delay_minutes = isnan(delay_seconds) ? 0 : (int) roundf(delay_seconds / 60.0f);
+            if (delay_minutes > 0) {
+              char status_buf[8];
+              snprintf(status_buf, sizeof(status_buf), "+%d", delay_minutes);
+              lv_label_set_text(status_label, status_buf);
+              lv_obj_set_style_text_color(status_label, lv_color_hex(0xFF5A5F), 0);
+            } else {
+              lv_label_set_text(status_label, "On Time");
+              lv_obj_set_style_text_color(status_label, lv_color_hex(0x36D676), 0);
+            }
+          };
+
+          lv_label_set_text(id(lbl_transport_line), "S1");
+          lv_obj_set_style_bg_color(id(pill_transport_line), lv_color_hex(0x1A962B), 0);
+
+          update_transport_card(
+            id(lbl_transport_eta),
+            id(lbl_transport_status),
+            id(lbl_transport_direction),
+            id(transport_s1_minutes).state,
+            id(transport_s1_delay).state,
+            id(transport_s1_direction).state
+          );
+
+          // Washing machines
+          lv_obj_set_style_text_color(id(lbl_washing_title), lv_color_hex(sub_text), 0);
+
+          auto update_washing_card = [](
+            lv_obj_t *card,
+            lv_obj_t *name_label,
+            lv_obj_t *icon_label,
+            lv_obj_t *state_label,
+            const char *name,
+            const std::string &state
+          ) {
+            lv_label_set_text(name_label, name);
+            lv_anim_del(icon_label, nullptr);
+            lv_obj_set_style_translate_x(icon_label, 0, 0);
+
+            auto start_wash_shake = [](lv_obj_t *obj) {
+              lv_anim_t anim;
+              lv_anim_init(&anim);
+              lv_anim_set_var(&anim, obj);
+              lv_anim_set_values(&anim, -2, 2);
+              lv_anim_set_time(&anim, 90);
+              lv_anim_set_playback_time(&anim, 90);
+              lv_anim_set_repeat_count(&anim, LV_ANIM_REPEAT_INFINITE);
+              lv_anim_set_path_cb(&anim, lv_anim_path_ease_in_out);
+              lv_anim_set_exec_cb(&anim, [](void *target, int32_t value) {
+                lv_obj_set_style_translate_x((lv_obj_t *) target, value, 0);
+              });
+              lv_anim_start(&anim);
+            };
+
+            if (state == "AVAILABLE") {
+              lv_label_set_text(icon_label, "\U000F072A");
+              lv_label_set_text(state_label, "Free");
+              lv_obj_set_style_bg_color(card, lv_color_hex(0x171717), 0);
+              lv_obj_set_style_border_color(card, lv_color_hex(0x3A3A3A), 0);
+              lv_obj_set_style_text_color(icon_label, lv_color_hex(0x8E8E8E), 0);
+              lv_obj_set_style_text_color(state_label, lv_color_hex(0xA0A0A0), 0);
+            } else if (state == "OCCUPIED") {
+              lv_label_set_text(icon_label, "\U000F072A");
+              lv_label_set_text(state_label, "Washing");
+              lv_obj_set_style_bg_color(card, lv_color_hex(0x301A1C), 0);
+              lv_obj_set_style_border_color(card, lv_color_hex(0xE57373), 0);
+              lv_obj_set_style_text_color(icon_label, lv_color_hex(0xE57373), 0);
+              lv_obj_set_style_text_color(state_label, lv_color_hex(0xE57373), 0);
+              start_wash_shake(icon_label);
+            } else if (state == "STOPPABLE") {
+              lv_label_set_text(icon_label, "\U000F11BC");
+              lv_label_set_text(state_label, "Your Wash");
+              lv_obj_set_style_bg_color(card, lv_color_hex(0x302812), 0);
+              lv_obj_set_style_border_color(card, lv_color_hex(0xFFD54F), 0);
+              lv_obj_set_style_text_color(icon_label, lv_color_hex(0xFFD54F), 0);
+              lv_obj_set_style_text_color(state_label, lv_color_hex(0xFFD54F), 0);
+            } else {
+              lv_label_set_text(icon_label, "\U000F072A");
+              lv_label_set_text(state_label, "Unknown");
+              lv_obj_set_style_bg_color(card, lv_color_hex(0x141414), 0);
+              lv_obj_set_style_border_color(card, lv_color_hex(0x303030), 0);
+              lv_obj_set_style_text_color(icon_label, lv_color_hex(0x777777), 0);
+              lv_obj_set_style_text_color(state_label, lv_color_hex(0x777777), 0);
+            }
+
+            lv_obj_set_style_text_color(name_label, lv_color_hex(0xC8C8C8), 0);
+          };
+
+          update_washing_card(id(card_washing_46083), id(lbl_washing_46083_name), id(lbl_washing_46083_icon), id(lbl_washing_46083_state), "46083", id(washing_machine_46083).state);
+          update_washing_card(id(card_washing_46084), id(lbl_washing_46084_name), id(lbl_washing_46084_icon), id(lbl_washing_46084_state), "46084", id(washing_machine_46084).state);
+          update_washing_card(id(card_washing_46085), id(lbl_washing_46085_name), id(lbl_washing_46085_icon), id(lbl_washing_46085_state), "46085", id(washing_machine_46085).state);
+          update_washing_card(id(card_washing_46086), id(lbl_washing_46086_name), id(lbl_washing_46086_icon), id(lbl_washing_46086_state), "46086", id(washing_machine_46086).state);
+          update_washing_card(id(card_washing_46087), id(lbl_washing_46087_name), id(lbl_washing_46087_icon), id(lbl_washing_46087_state), "46087", id(washing_machine_46087).state);
+          update_washing_card(id(card_washing_46088), id(lbl_washing_46088_name), id(lbl_washing_46088_icon), id(lbl_washing_46088_state), "46088", id(washing_machine_46088).state);
+          update_washing_card(id(card_washing_46118), id(lbl_washing_46118_name), id(lbl_washing_46118_icon), id(lbl_washing_46118_state), "46118", id(washing_machine_46118).state);
+          update_washing_card(id(card_washing_46117), id(lbl_washing_46117_name), id(lbl_washing_46117_icon), id(lbl_washing_46117_state), "46117", id(washing_machine_46117).state);
+lvgl:
+  displays:
+    - my_display
+
+  touchscreens:
+    - touchscreen_id: ts_touch
+
+  rotation: 90
+
+  pages:
+    - id: main_page
+      bg_color: 0x000000
+      bg_opa: COVER
+      widgets:
+        - container:
+            id: bg_panel
+            x: 0
+            y: 0
+            width: 320
+            height: 240
+            bg_color: 0x000000
+            bg_opa: COVER
+            border_width: 0
+            radius: 0
+            pad_all: 0
+            scrollable: false
+            scrollbar_mode: 'OFF'
+            clickable: false
+            widgets:
+              - image:
+                  id: bg_img
+                  src: bg_image
+                  align: TOP_LEFT
+                  x: 0
+                  y: 0
+                  clickable: false
+
+              - container:
+                  id: header_panel
+                  x: 0
+                  y: 0
+                  width: 320
+                  height: 44
+                  bg_opa: TRANSP
+                  border_width: 0
+                  radius: 0
+                  pad_left: 15
+                  pad_top: 12
+                  pad_right: 15
+                  pad_bottom: 0
+                  layout:
+                    type: GRID
+                    grid_columns: [FR(1), CONTENT]
+                    grid_rows: [FR(1)]
+                    pad_column: 4
+                  scrollable: false
+                  scrollbar_mode: 'OFF'
+                  clickable: false
+                  widgets:
+                    - label:
+                        id: lbl_greeting
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 0
+                        grid_cell_x_align: START
+                        grid_cell_y_align: START
+                        width: 200
+                        height: 24
+                        text: "Hi Rishi"
+                        text_font: font_sub
+                        text_color: 0x230C0F
+                        text_align: LEFT
+                        long_mode: CLIP
+
+                    - label:
+                        id: lbl_indoor_header
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 1
+                        grid_cell_x_align: END
+                        grid_cell_y_align: START
+                        width: SIZE_CONTENT
+                        height: 24
+                        text: ""
+                        text_font: font_sub
+                        text_color: 0x230C0F
+                        text_align: RIGHT
+                        long_mode: CLIP
+
+              - label:
+                  id: lbl_time
+                  align: TOP_MID
+                  y: 46
+                  width: 320
+                  height: 95
+                  text: "00:00"
+                  text_font: font_time
+                  text_color: 0x230C0F
+                  text_align: CENTER
+                  long_mode: CLIP
+
+              - label:
+                  id: lbl_condition
+                  align: TOP_MID
+                  y: 157
+                  width: 300
+                  height: 34
+                  text: "Loading..."
+                  text_font: font_condition_18
+                  text_color: 0x230C0F
+                  text_align: CENTER
+                  long_mode: DOT
+
+              - container:
+                  id: footer_panel
+                  x: 0
+                  y: 189
+                  width: 320
+                  height: 51
+                  bg_opa: TRANSP
+                  border_width: 0
+                  radius: 0
+                  pad_left: 15
+                  pad_right: 15
+                  pad_top: 0
+                  pad_bottom: 15
+                  layout:
+                    type: GRID
+                    grid_columns: [FR(1), 30, CONTENT]
+                    grid_rows: [FR(1)]
+                    pad_column: 4
+                  scrollable: false
+                  scrollbar_mode: 'OFF'
+                  clickable: false
+                  widgets:
+                    - label:
+                        id: lbl_day
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 0
+                        grid_cell_x_align: START
+                        grid_cell_y_align: END
+                        width: 140
+                        height: 22
+                        text: ""
+                        text_font: font_sub
+                        text_color: 0x230C0F
+                        text_align: LEFT
+                        long_mode: DOT
+
+                    - label:
+                        id: lbl_weather_icon
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 1
+                        grid_cell_x_align: END
+                        grid_cell_y_align: END
+                        width: 30
+                        height: 30
+                        translate_y: 4
+                        text: "\U000F0599"
+                        text_font: font_weather_icon
+                        text_color: 0x230C0F
+                        text_align: RIGHT
+                        long_mode: CLIP
+
+                    - label:
+                        id: lbl_temp
+                        grid_cell_row_pos: 0
+                        grid_cell_column_pos: 2
+                        grid_cell_x_align: END
+                        grid_cell_y_align: END
+                        width: SIZE_CONTENT
+                        height: 22
+                        text: ""
+                        text_font: font_sub
+                        text_color: 0x230C0F
+                        text_align: RIGHT
+                        long_mode: DOT
+
+    - id: lights_page
+      bg_color: 0x000000
+      bg_opa: COVER
+      widgets:
+        - image:
+            id: lights_bg_img
+            src: bg_image
+            align: TOP_LEFT
+            x: 0
+            y: 0
+            clickable: false
+
+        - container:
+            id: lights_panel
+            x: 0
+            y: 0
+            width: 320
+            height: 240
+            bg_color: 0x101010
+            bg_opa: TRANSP
+            border_width: 0
+            radius: 0
+            pad_left: 15
+            pad_right: 15
+            pad_top: 14
+            pad_bottom: 15
+            layout:
+              type: GRID
+              grid_columns: [FR(1), FR(1), FR(1), FR(1)]
+              grid_rows: [30, FR(1), FR(1)]
+              pad_row: 8
+              pad_column: 8
+            scrollable: false
+            scrollbar_mode: 'OFF'
+            widgets:
+              - label:
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 0
+                  grid_cell_column_span: 4
+                  grid_cell_x_align: START
+                  grid_cell_y_align: CENTER
+                  text: "Scenes"
+                  text_font: font_sub
+                  text_color: 0xFFFFFF
+                  text_align: LEFT
+
+              - button:
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 0
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x2A2A2A
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 8
+                  on_click:
+                    then:
+                      - homeassistant.action:
+                          action: script.apply_docky_scene_preset
+                          data:
+                            preset_id: d648408d-58ab-4768-b192-47ce06dc8e61
+                            entity_id: light.bedroom
+                            shuffle: 'true'
+                            smart_shuffle: 'true'
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "\U000F1844"
+                        text_font: font_scene_icon
+                        text_color: 0xFFFFFF
+                        text_align: CENTER
+
+              - button:
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 1
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x2A2A2A
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 8
+                  on_click:
+                    then:
+                      - homeassistant.action:
+                          action: script.apply_docky_scene_preset
+                          data:
+                            preset_id: 8072c23c-c25e-425f-b93e-0402c169f1f3
+                            entity_id: light.bedroom
+                            shuffle: 'true'
+                            smart_shuffle: 'true'
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "\U000F0D72"
+                        text_font: font_scene_icon
+                        text_color: 0xFFFFFF
+                        text_align: CENTER
+
+              - button:
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 2
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x2A2A2A
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 8
+                  on_click:
+                    then:
+                      - homeassistant.action:
+                          action: script.apply_docky_scene_preset
+                          data:
+                            preset_id: dbffbd71-7f65-428a-9ac7-0db51057d31a
+                            entity_id: light.bedroom
+                            shuffle: 'true'
+                            smart_shuffle: 'true'
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "\U000F0674"
+                        text_font: font_scene_icon
+                        text_color: 0xFFFFFF
+                        text_align: CENTER
+
+              - button:
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 3
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x2A2A2A
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 8
+                  on_click:
+                    then:
+                      - homeassistant.action:
+                          action: script.apply_docky_scene_preset
+                          data:
+                            preset_id: de7eda64-84bf-4ed6-a4fa-76e0ebdd1968
+                            entity_id: light.bedroom
+                            shuffle: 'true'
+                            smart_shuffle: 'true'
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "\U000F04B9"
+                        text_font: font_scene_icon
+                        text_color: 0xFFFFFF
+                        text_align: CENTER
+
+              - button:
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 0
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x2A2A2A
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 8
+                  on_click:
+                    then:
+                      - homeassistant.action:
+                          action: script.apply_docky_scene_preset
+                          data:
+                            preset_id: 66893c7e-4535-46d4-b9c7-fb6f5a80faa9
+                            entity_id: light.bedroom
+                            shuffle: 'true'
+                            smart_shuffle: 'true'
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "\U000F0E2E"
+                        text_font: font_scene_icon
+                        text_color: 0xFFFFFF
+                        text_align: CENTER
+
+              - button:
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 1
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x2A2A2A
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 8
+                  on_click:
+                    then:
+                      - homeassistant.action:
+                          action: script.apply_docky_scene_preset
+                          data:
+                            preset_id: 6a794ffd-3564-493d-a9ad-a1abcec8b81c
+                            entity_id: light.bedroom
+                            shuffle: 'true'
+                            smart_shuffle: 'true'
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "\U000F0717"
+                        text_font: font_scene_icon
+                        text_color: 0xFFFFFF
+                        text_align: CENTER
+
+              - button:
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 2
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x2A2A2A
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 8
+                  on_click:
+                    then:
+                      - homeassistant.action:
+                          action: script.apply_docky_scene_preset
+                          data:
+                            preset_id: 0834f278-ef59-4655-940c-a078650d2e86
+                            entity_id: light.bedroom
+                            shuffle: 'true'
+                            smart_shuffle: 'true'
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "\U000F07B4"
+                        text_font: font_scene_icon
+                        text_color: 0xFFFFFF
+                        text_align: CENTER
+
+              - button:
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 3
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x2A2A2A
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 8
+                  on_click:
+                    then:
+                      - homeassistant.action:
+                          action: light.toggle
+                          data:
+                            entity_id: light.bedroom
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "\U000F0425"
+                        text_font: font_scene_icon
+                        text_color: 0xFFFFFF
+                        text_align: CENTER
+
+    - id: transport_page
+      bg_color: 0x000000
+      bg_opa: COVER
+      widgets:
+        - image:
+            id: transport_bg_img
+            src: bg_image
+            align: TOP_LEFT
+            x: 0
+            y: 0
+            clickable: false
+
+        - container:
+            id: transport_panel
+            x: 0
+            y: 0
+            width: 320
+            height: 240
+            bg_color: 0x101010
+            bg_opa: TRANSP
+            border_width: 0
+            radius: 0
+            pad_left: 15
+            pad_right: 15
+            pad_top: 10
+            pad_bottom: 10
+            layout:
+              type: GRID
+              grid_columns: [FR(1)]
+              grid_rows: [FR(1)]
+            scrollable: false
+            scrollbar_mode: 'OFF'
+            widgets:
+              - container:
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 0
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x1F1F1F
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 18
+                  pad_all: 0
+                  scrollable: false
+                  widgets:
+                    - container:
+                        id: pill_transport_line
+                        x: 16
+                        y: 16
+                        width: 62
+                        height: 30
+                        bg_color: 0x666666
+                        bg_opa: COVER
+                        border_width: 0
+                        radius: 12
+                        pad_all: 0
+                        widgets:
+                          - label:
+                              id: lbl_transport_line
+                              align: CENTER
+                              text: "-"
+                              text_font: font_sub
+                              text_color: 0xFFFFFF
+                              text_align: CENTER
+                    - label:
+                        id: lbl_transport_status
+                        align: TOP_RIGHT
+                        x: -16
+                        y: 22
+                        width: 100
+                        height: 22
+                        text: ""
+                        text_font: font_sub
+                        text_color: 0x36D676
+                        text_align: RIGHT
+                        long_mode: DOT
+                    - label:
+                        id: lbl_transport_eta
+                        align: CENTER
+                        y: 2
+                        width: 260
+                        height: 56
+                        text: "-"
+                        text_font: font_transport_eta
+                        text_color: 0xFFFFFF
+                        text_align: CENTER
+                        long_mode: CLIP
+                    - label:
+                        id: lbl_transport_direction
+                        align: BOTTOM_MID
+                        y: -18
+                        width: 260
+                        height: 22
+                        text: "-"
+                        text_font: font_sub
+                        text_color: 0xAAAAAA
+                        text_align: CENTER
+                        long_mode: DOT
+
+    - id: washing_page
+      bg_color: 0x000000
+      bg_opa: COVER
+      widgets:
+        - image:
+            id: washing_bg_img
+            src: bg_image
+            align: TOP_LEFT
+            x: 0
+            y: 0
+            clickable: false
+
+        - container:
+            id: washing_panel
+            x: 0
+            y: 0
+            width: 320
+            height: 240
+            bg_color: 0x101010
+            bg_opa: TRANSP
+            border_width: 0
+            radius: 0
+            pad_left: 15
+            pad_right: 15
+            pad_top: 12
+            pad_bottom: 15
+            layout:
+              type: GRID
+              grid_columns: [FR(1), FR(1), FR(1), FR(1)]
+              grid_rows: [28, FR(1), FR(1)]
+              pad_row: 8
+              pad_column: 8
+            scrollable: false
+            scrollbar_mode: 'OFF'
+            widgets:
+              - label:
+                  id: lbl_washing_title
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 0
+                  grid_cell_column_span: 4
+                  grid_cell_x_align: START
+                  grid_cell_y_align: CENTER
+                  text: "Washing Machines"
+                  text_font: font_sub
+                  text_color: 0xFFFFFF
+                  text_align: LEFT
+
+              - container:
+                  id: card_washing_46083
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 0
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x1F1F1F
+                  bg_opa: COVER
+                  border_width: 1
+                  radius: 16
+                  pad_all: 0
+                  scrollable: false
+                  widgets:
+                    - label:
+                        id: lbl_washing_46083_name
+                        align: TOP_MID
+                        y: 7
+                        width: 62
+                        text: "46083"
+                        text_font: font_condition_12
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                    - label:
+                        id: lbl_washing_46083_icon
+                        align: CENTER
+                        y: -2
+                        text: "\U000F072A"
+                        text_font: font_washing_icon
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                    - label:
+                        id: lbl_washing_46083_state
+                        align: BOTTOM_MID
+                        y: -8
+                        width: 62
+                        text: "Unknown"
+                        text_font: font_condition_12
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                        long_mode: DOT
+
+              - container:
+                  id: card_washing_46084
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 1
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x1F1F1F
+                  bg_opa: COVER
+                  border_width: 1
+                  radius: 16
+                  pad_all: 0
+                  scrollable: false
+                  widgets:
+                    - label:
+                        id: lbl_washing_46084_name
+                        align: TOP_MID
+                        y: 7
+                        width: 62
+                        text: "46084"
+                        text_font: font_condition_12
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                    - label:
+                        id: lbl_washing_46084_icon
+                        align: CENTER
+                        y: -2
+                        text: "\U000F072A"
+                        text_font: font_washing_icon
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                    - label:
+                        id: lbl_washing_46084_state
+                        align: BOTTOM_MID
+                        y: -8
+                        width: 62
+                        text: "Unknown"
+                        text_font: font_condition_12
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                        long_mode: DOT
+
+              - container:
+                  id: card_washing_46085
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 2
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x1F1F1F
+                  bg_opa: COVER
+                  border_width: 1
+                  radius: 16
+                  pad_all: 0
+                  scrollable: false
+                  widgets:
+                    - label:
+                        id: lbl_washing_46085_name
+                        align: TOP_MID
+                        y: 7
+                        width: 62
+                        text: "46085"
+                        text_font: font_condition_12
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                    - label:
+                        id: lbl_washing_46085_icon
+                        align: CENTER
+                        y: -2
+                        text: "\U000F072A"
+                        text_font: font_washing_icon
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                    - label:
+                        id: lbl_washing_46085_state
+                        align: BOTTOM_MID
+                        y: -8
+                        width: 62
+                        text: "Unknown"
+                        text_font: font_condition_12
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                        long_mode: DOT
+
+              - container:
+                  id: card_washing_46086
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 3
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x1F1F1F
+                  bg_opa: COVER
+                  border_width: 1
+                  radius: 16
+                  pad_all: 0
+                  scrollable: false
+                  widgets:
+                    - label:
+                        id: lbl_washing_46086_name
+                        align: TOP_MID
+                        y: 7
+                        width: 62
+                        text: "46086"
+                        text_font: font_condition_12
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                    - label:
+                        id: lbl_washing_46086_icon
+                        align: CENTER
+                        y: -2
+                        text: "\U000F072A"
+                        text_font: font_washing_icon
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                    - label:
+                        id: lbl_washing_46086_state
+                        align: BOTTOM_MID
+                        y: -8
+                        width: 62
+                        text: "Unknown"
+                        text_font: font_condition_12
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                        long_mode: DOT
+
+              - container:
+                  id: card_washing_46087
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 0
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x1F1F1F
+                  bg_opa: COVER
+                  border_width: 1
+                  radius: 16
+                  pad_all: 0
+                  scrollable: false
+                  widgets:
+                    - label:
+                        id: lbl_washing_46087_name
+                        align: TOP_MID
+                        y: 7
+                        width: 62
+                        text: "46087"
+                        text_font: font_condition_12
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                    - label:
+                        id: lbl_washing_46087_icon
+                        align: CENTER
+                        y: -2
+                        text: "\U000F072A"
+                        text_font: font_washing_icon
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                    - label:
+                        id: lbl_washing_46087_state
+                        align: BOTTOM_MID
+                        y: -8
+                        width: 62
+                        text: "Unknown"
+                        text_font: font_condition_12
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                        long_mode: DOT
+
+              - container:
+                  id: card_washing_46088
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 1
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x1F1F1F
+                  bg_opa: COVER
+                  border_width: 1
+                  radius: 16
+                  pad_all: 0
+                  scrollable: false
+                  widgets:
+                    - label:
+                        id: lbl_washing_46088_name
+                        align: TOP_MID
+                        y: 7
+                        width: 62
+                        text: "46088"
+                        text_font: font_condition_12
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                    - label:
+                        id: lbl_washing_46088_icon
+                        align: CENTER
+                        y: -2
+                        text: "\U000F072A"
+                        text_font: font_washing_icon
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                    - label:
+                        id: lbl_washing_46088_state
+                        align: BOTTOM_MID
+                        y: -8
+                        width: 62
+                        text: "Unknown"
+                        text_font: font_condition_12
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                        long_mode: DOT
+
+              - container:
+                  id: card_washing_46118
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 2
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x1F1F1F
+                  bg_opa: COVER
+                  border_width: 1
+                  radius: 16
+                  pad_all: 0
+                  scrollable: false
+                  widgets:
+                    - label:
+                        id: lbl_washing_46118_name
+                        align: TOP_MID
+                        y: 7
+                        width: 62
+                        text: "46118"
+                        text_font: font_condition_12
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                    - label:
+                        id: lbl_washing_46118_icon
+                        align: CENTER
+                        y: -2
+                        text: "\U000F072A"
+                        text_font: font_washing_icon
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                    - label:
+                        id: lbl_washing_46118_state
+                        align: BOTTOM_MID
+                        y: -8
+                        width: 62
+                        text: "Unknown"
+                        text_font: font_condition_12
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                        long_mode: DOT
+
+              - container:
+                  id: card_washing_46117
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 3
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  bg_color: 0x1F1F1F
+                  bg_opa: COVER
+                  border_width: 1
+                  radius: 16
+                  pad_all: 0
+                  scrollable: false
+                  widgets:
+                    - label:
+                        id: lbl_washing_46117_name
+                        align: TOP_MID
+                        y: 7
+                        width: 62
+                        text: "46117"
+                        text_font: font_condition_12
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                    - label:
+                        id: lbl_washing_46117_icon
+                        align: CENTER
+                        y: -2
+                        text: "\U000F072A"
+                        text_font: font_washing_icon
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                    - label:
+                        id: lbl_washing_46117_state
+                        align: BOTTOM_MID
+                        y: -8
+                        width: 62
+                        text: "Unknown"
+                        text_font: font_condition_12
+                        text_color: 0xA0A0A0
+                        text_align: CENTER
+                        long_mode: DOT
