@@ -2,6 +2,15 @@
 
 A smart desk dock powered by the Cheap Yellow Display (CYD) ESP32-2432S028, built with ESPHome, LVGL, and Home Assistant.
 
+## Gallery
+
+![Docky on desk](docs/images/Desk.gif)
+
+| Docky detail | Display view | Hardware view |
+| --- | --- | --- |
+| ![Docky detail](docs/images/IMG_3742.jpg) | ![Docky display](docs/images/IMG_3744.jpg) | ![Docky hardware](docs/images/IMG_3745.jpg) |
+| ![Docky wiring](docs/images/IMG_3746.jpg) | ![Docky side view](docs/images/IMG_3747.jpg) | |
+
 ## Repository Layout
 
 ```text
@@ -10,6 +19,8 @@ docky-esphome-lvgl/
 ├── secrets.yaml.example
 ├── .gitignore
 ├── THIRD_PARTY_NOTICES.md
+├── docs/
+│   └── images/                               # README photos/GIF
 ├── fonts/
 │   ├── README.md
 │   └── materialdesignicons-webfont.ttf        # you add this
@@ -29,6 +40,7 @@ secrets.yaml.example
 .gitignore
 README.md
 THIRD_PARTY_NOTICES.md
+docs/images/
 fonts/README.md
 images/README.md
 images/background.png and images/background_night.png, if they are your images or you have rights to share them
